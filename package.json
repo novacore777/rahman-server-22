@@ -1,0 +1,7 @@
+{
+  "name": "novacore-ai-voice-assistant",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
