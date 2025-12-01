@@ -1,51 +1,50 @@
 // api/chat.js
-// Vercel Node.js Serverless Function
+// Vercel Node.js Serverless Function (CommonJS)
 
 module.exports = async (req, res) => {
-  // CORS (optional, mostly helpful in dev)
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Basic CORS (optional)
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ reply: 'Only POST allowed.' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ reply: "Sirf POST request allow hai." });
   }
 
   // Body parse
   let body = req.body;
-  if (typeof body === 'string') {
+  if (typeof body === "string") {
     try {
       body = JSON.parse(body);
     } catch (e) {
       body = {};
     }
   }
-  const userMessage = (body && body.message) ? String(body.message) : '';
+  const userMessage = body && body.message ? String(body.message) : "";
 
   if (!userMessage) {
-    return res.status(400).json({ reply: 'Koi message nahi mila.' });
+    return res.status(400).json({ reply: "Koi message nahi mila, dobara bhejo." });
   }
 
   const HF_API_KEY = process.env.HF_API_KEY;
-
   if (!HF_API_KEY) {
     return res.status(500).json({
-      reply: 'Server config theek nahi hai (HF_API_KEY missing). ' +
-             'Developer ko bolo Vercel env me HF_API_KEY set kare.'
+      reply:
+        "Server config theek nahi hai (HF_API_KEY missing). Developer ko bolo Vercel env me HF_API_KEY set kare."
     });
   }
 
-  // 🧠 Permanent Memory / Identity
+  // 🧠 Permanent Memory / Identity Prompt
   const identityMemory = `
 Tum ek AI voice assistant ho jiska naam "Novacore AI" hai.
-Tum hamesha sirf Roman Urdu mein jawab do. English ya Urdu script (ا ب پ etc.) nahi.
+Tum hamesha sirf Roman Urdu mein jawab do. English ya Urdu script (ا ب پ etc.) nahi likhni.
 Roman Urdu simple, friendly aur choti sentences mein hogi.
 
-Bohat important rule (PERMANENT MEMORY):
+Important rules (PERMANENT MEMORY):
 
 - Agar user bole ya pooche:
   - "Novacore AI agaya"
@@ -61,83 +60,107 @@ TOH HAMESHA yeh EXACT jawab do:
 Is answer ko change nahi karna, hamesha yahi line use karni hai.
 
 Baaki tamam questions ka normal Roman Urdu mein friendly style mein jawab do.
-Jab example dene ho, simple roman urdu use karo jese:
-"theek hoon", "tum batao", "aaj ka plan kya hai", waghera.
-  `.trim();
+Thandi, simple language use karo jese:
+"me theek hoon", "tum batao", "chalo ek joke suno", "aaj ka plan kya hai", waghera.
+`.trim();
 
-  // Prompt build
   const prompt = `
 ${identityMemory}
 
 User: ${userMessage}
-Assistant (Roman Urdu main):`.trim();
+Assistant (Roman Urdu mein):`.trim();
 
   try {
-    const response = await fetch('https://api-inference.huggingface.co/models/microsoft/phi-2', {
-      method: 'POST',
+    const MODEL_URL =
+      "https://api-inference.huggingface.co/models/google/gemma-2b-it";
+
+    const hfResponse = await fetch(MODEL_URL, {
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${HF_API_KEY}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${HF_API_KEY}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         inputs: prompt,
         parameters: {
-          max_new_tokens: 160,
+          max_new_tokens: 180,
           temperature: 0.7,
           top_p: 0.9,
-          do_sample: true,
-          return_full_text: true
+          repetition_penalty: 1.1,
+          do_sample: true
+        },
+        options: {
+          wait_for_model: true // model sleep ho to bhi wait kare
         }
       })
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('HF error:', errorText);
-      return res.status(500).json({
-        reply: 'AI se jawab late waqt error aa gaya. Thori dair baad try kar lena.'
+    if (!hfResponse.ok) {
+      const errorText = await hfResponse.text();
+      console.error("HF error:", hfResponse.status, errorText);
+
+      // Agar model abhi load ho raha ho ya busy ho
+      if (hfResponse.status === 503) {
+        return res.status(200).json({
+          reply:
+            "Model abhi load ho raha hai ya busy hai. Thori dair baad dobara try kar lena."
+        });
+      }
+
+      return res.status(200).json({
+        reply:
+          "AI se jawab late waqt error aa gaya (server side). Thori dair baad try kar lena."
       });
     }
 
-    const data = await response.json();
+    const data = await hfResponse.json();
 
-    let fullText = '';
+    // HF se data 2 tarah se aa sakta hai: array ya object
+    let fullText = "";
     if (Array.isArray(data) && data[0] && data[0].generated_text) {
       fullText = data[0].generated_text;
+    } else if (data && data.generated_text) {
+      fullText = data.generated_text;
     } else {
-      console.error('Unexpected HF response format', data);
-      return res.status(500).json({
-        reply: 'AI ka jawab sahi format mein nahi mila. Baad mein try karna.'
+      console.error("Unexpected HF response format:", data);
+      return res.status(200).json({
+        reply:
+          "AI ka jawab sahi format mein nahi mila. Thori dair baad dobara try kar lena."
       });
     }
 
-    // Sirf Assistant ka hissah nikalne ki koshish
+    // Sirf Assistant ka hissa nikalne ki koshish
     let reply = fullText;
-    const marker = 'Assistant (Roman Urdu main):';
+    const marker = "Assistant (Roman Urdu mein):";
     const idx = fullText.lastIndexOf(marker);
     if (idx !== -1) {
       reply = fullText.substring(idx + marker.length).trim();
     } else {
-      // fallback: pura text se last line
-      const lines = fullText.split('\n').map(l => l.trim()).filter(Boolean);
+      // fallback: last non-empty line
+      const lines = fullText
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
       reply = lines[lines.length - 1] || fullText;
     }
 
-    // Kuch cleaning
+    // Cleanup
     reply = reply
-      .replace(/^Assistant\s*:/i, '')
-      .replace(/^Novacore AI\s*:/i, '')
+      .replace(/^Assistant\s*:/i, "")
+      .replace(/^Novacore AI\s*:/i, "")
       .trim();
 
     if (!reply) {
-      reply = 'Mujhe sahi jawab generate nahi ho saka, dobara sawal repeat kar do please.';
+      reply =
+        "Mujhe sahi jawab generate nahi ho saka, zara sawal dobara simple words mein repeat kar do please.";
     }
 
     return res.status(200).json({ reply });
   } catch (err) {
-    console.error('Server error:', err);
-    return res.status(500).json({
-      reply: 'Internal server error aa gaya. Thori dair baad dobara try karna.'
+    console.error("Server error:", err);
+    return res.status(200).json({
+      reply:
+        "Internal server error aa gaya. Connection ya server issue ho sakta hai, thori dair baad dobara try kar lena."
     });
   }
 };
