@@ -1,5 +1,5 @@
 // api/chat.js
-// Vercel Node.js Serverless Function (CommonJS)
+// Simple rule-based Roman Urdu assistant (no external API)
 
 module.exports = async (req, res) => {
   // Basic CORS
@@ -25,133 +25,115 @@ module.exports = async (req, res) => {
     }
   }
   const userMessage = body && body.message ? String(body.message) : "";
+  const text = userMessage.trim();
+  const lower = text.toLowerCase();
 
-  if (!userMessage) {
-    return res.status(400).json({ reply: "Koi message nahi mila, dobara bhejo." });
-  }
-
-  const HF_API_KEY = process.env.HF_API_KEY;
-  if (!HF_API_KEY) {
-    return res.status(500).json({
-      reply:
-        "DEBUG: HF_API_KEY env variable missing hai Vercel settings me. Ja ke add karo."
+  if (!text) {
+    return res.status(200).json({
+      reply: "Kuch bolo na bhai, main sun raha hoon 🙂"
     });
   }
 
-  // 🧠 Permanent Memory / Identity Prompt
-  const identityMemory = `
-Tum ek AI voice assistant ho jiska naam "Novacore AI" hai.
-Tum hamesha sirf Roman Urdu mein jawab do. English ya Urdu script (ا ب پ etc.) nahi likhni.
-Roman Urdu simple, friendly aur choti sentences mein hogi.
+  // 🧠 Permanent identity – Novacore AI
+  const creatorKeywords = [
+    "novacore ai agaya",
+    "novacore ai kon hai",
+    "novacore ai kaun hai",
+    "tumhe kis ne banaya",
+    "kis ne banaya",
+    "creator kaun hai",
+    "kis ne create",
+    "who made you",
+    "who created you"
+  ];
 
-Important rules (PERMANENT MEMORY):
-
-- Agar user bole ya pooche:
-  - "Novacore AI agaya"
-  - "Novacore AI kaun hai"
-  - "tumhe kis ne banaya"
-  - "tumhara creator kaun hai"
-  - ya koi bhi aisa sawal jisme "Novacore AI" aur creator ka concept ho,
-
-TOH HAMESHA yeh EXACT jawab do:
-
-"Novacore AI — mujhe Rahman Ahmed aur Ghulam Murtaza ne banaya hai."
-
-Is answer ko change nahi karna, hamesha yahi line use karni hai.
-
-Baaki tamam questions ka normal Roman Urdu mein friendly style mein jawab do.
-Thandi, simple language use karo jese:
-"me theek hoon", "tum batao", "chalo ek joke suno", "aaj ka plan kya hai", waghera.
-`.trim();
-
-  const prompt = `
-${identityMemory}
-
-User: ${userMessage}
-Assistant (Roman Urdu mein):`.trim();
-
-  try {
-    const MODEL_URL =
-      "https://api-inference.huggingface.co/models/google/gemma-2b-it";
-
-    const hfResponse = await fetch(MODEL_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${HF_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          max_new_tokens: 180,
-          temperature: 0.7,
-          top_p: 0.9,
-          repetition_penalty: 1.1,
-          do_sample: true
-        },
-        options: {
-          wait_for_model: true
-        }
-      })
+  if (creatorKeywords.some(k => lower.includes(k))) {
+    return res.status(200).json({
+      reply: "Novacore AI — mujhe Rahman Ahmed aur Ghulam Murtaza ne banaya hai."
     });
+  }
 
-    if (!hfResponse.ok) {
-      const errorText = await hfResponse.text();
-      console.error("HF error:", hfResponse.status, errorText);
+  // Greetings
+  if (
+    lower.includes("assalam") ||
+    lower.includes("asalam") ||
+    lower.includes("salam") ||
+    lower.includes("hello") ||
+    lower.includes("hi ")
+  ) {
+    return res.status(200).json({
+      reply: "Wa alaikum salam! Me Novacore AI hoon, roman urdu mein jo puchna ho puch lo 😊"
+    });
+  }
 
-      // 👉 yahan hum direct error screen par bhej rahe hain
-      return res.status(200).json({
-        reply:
-          `DEBUG: HuggingFace error (status ${hfResponse.status}). ` +
-          `Message ka start: ${errorText.slice(0, 200)}`
-      });
-    }
+  // “how are you”
+  if (
+    lower.includes("kese ho") ||
+    lower.includes("kaisa ho") ||
+    lower.includes("how are you")
+  ) {
+    return res.status(200).json({
+      reply: "Me theek hoon yar, tum batao kese ho? 😄"
+    });
+  }
 
-    const data = await hfResponse.json();
+  // Joke
+  if (
+    lower.includes("joke") ||
+    lower.includes("jokes") ||
+    lower.includes("mazaq") ||
+    lower.includes("mazaak") ||
+    lower.includes("chutkula")
+  ) {
+    const jokes = [
+      "Ek banda bola: mobile slow ho gaya hai. Dosra bola: usko chai pila, sab tez ho jata hai garam garam 😂",
+      "Teacher: homework kyun nahi kiya? Student: sir light nahi thi. Teacher: din mein? Student: sir din ko motivation nahi thi 😆",
+      "Doctor: aap ko kis cheez se allergy hai? Patient: paise se. Doctor: wah, free mein check karaoge phir! 😜"
+    ];
+    const j = jokes[Math.floor(Math.random() * jokes.length)];
+    return res.status(200).json({
+      reply: "Chalo ek chota sa joke suno:\n\n" + j
+    });
+  }
 
-    let fullText = "";
-    if (Array.isArray(data) && data[0] && data[0].generated_text) {
-      fullText = data[0].generated_text;
-    } else if (data && data.generated_text) {
-      fullText = data.generated_text;
-    } else {
-      console.error("Unexpected HF response format:", data);
-      return res.status(200).json({
-        reply:
-          "DEBUG: AI ka jawab sahi format mein nahi mila. Response structure unexpected hai."
-      });
-    }
+  // Time / date (very simple)
+  if (lower.includes("time") || lower.includes("waqt")) {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes().toString().padStart(2, "0");
+    return res.status(200).json({
+      reply: `Abhi approx ${hours}:${minutes} baj rahe hain tumhare device ke hisaab se.`
+    });
+  }
 
-    let reply = fullText;
-    const marker = "Assistant (Roman Urdu mein):";
-    const idx = fullText.lastIndexOf(marker);
-    if (idx !== -1) {
-      reply = fullText.substring(idx + marker.length).trim();
-    } else {
-      const lines = fullText
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean);
-      reply = lines[lines.length - 1] || fullText;
-    }
+  if (lower.includes("date") || lower.includes("tareekh")) {
+    const now = new Date();
+    const d = now.getDate().toString().padStart(2, "0");
+    const m = (now.getMonth() + 1).toString().padStart(2, "0");
+    const y = now.getFullYear();
+    return res.status(200).json({
+      reply: `Aaj ki tareekh ${d}-${m}-${y} hai (device ke mutabiq).`
+    });
+  }
 
-    reply = reply
-      .replace(/^Assistant\s*:/i, "")
-      .replace(/^Novacore AI\s*:/i, "")
-      .trim();
-
-    if (!reply) {
-      reply =
-        "DEBUG: Model ne khali reply diya, sawal zara dusre tareeke se phir puch ke dekho.";
-    }
-
-    return res.status(200).json({ reply });
-  } catch (err) {
-    console.error("Server error:", err);
+  // Advice / generic help
+  if (
+    lower.includes("sad") ||
+    lower.includes("udaas") ||
+    lower.includes("bura") ||
+    lower.includes("tension")
+  ) {
     return res.status(200).json({
       reply:
-        "DEBUG: Internal server error. Shayad fetch ya network issue hai: " +
-        String(err)
+        "Agar tum udaas ho to thora sa break lo, halka music suno ya walk pe chalay jao. Agar kisi se baat karni ho to close dost ya family se zaroor share karo. Tum akelay nahi ho ❤️"
     });
   }
+
+  // Fallback generic AI style reply
+  return res.status(200).json({
+    reply:
+      "Me samajh gaya ke tum ne bola: \"" +
+      text +
+      "\".\n\nFilhal me simple rule-based assistant hoon, lekin phir bhi koshish karun ga ke tumhari roman urdu mein help karun. Thora detail se batao ke kis cheez mein help chahiye? 🙂"
+  });
 };
