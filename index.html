@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Novacore AI - Voice Assistant</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #050816;
+      color: #e5e7eb;
+      display: flex;
+      min-height: 100vh;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .app {
+      width: 100%;
+      max-width: 600px;
+      background: radial-gradient(circle at top, #111827, #020617);
+      border-radius: 24px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      padding: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      background: conic-gradient(from 140deg, #38bdf8, #a855f7, #f97316, #38bdf8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 18px;
+      color: #0b1120;
+    }
+    .title-box {
+      display: flex;
+      flex-direction: column;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .subtitle {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    #chat {
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      padding: 10px;
+      height: 360px;
+      overflow-y: auto;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .msg {
+      margin: 6px 0;
+      max-width: 80%;
+      padding: 8px 10px;
+      border-radius: 12px;
+      line-height: 1.3;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .user {
+      margin-left: auto;
+      background: linear-gradient(to right, #22c55e, #16a34a);
+      color: #022c22;
+      text-align: right;
+    }
+    .ai {
+      margin-right: auto;
+      background: rgba(31, 41, 55, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      color: #e5e7eb;
+    }
+    .footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    #micBtn {
+      flex: 1;
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      background: linear-gradient(to right, #38bdf8, #a855f7);
+      color: #020617;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.1s ease;
+    }
+    #micBtn.recording {
+      box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.4);
+      background: linear-gradient(to right, #f97316, #ef4444);
+      animation: pulse 1s infinite;
+    }
+    #micBtn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      box-shadow: none;
+      animation: none;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.03); }
+      100% { transform: scale(1); }
+    }
+    .tip {
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    .status {
+      font-size: 11px;
+      color: #a5b4fc;
+      min-height: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div class="logo">N</div>
+      <div class="title-box">
+        <div class="title">Novacore AI</div>
+        <div class="subtitle">Roman Urdu Voice Assistant (Rahman Ahmed &amp; Ghulam Murtaza)</div>
+      </div>
+    </div>
+
+    <div id="chat"></div>
+
+    <div class="footer">
+      <button id="micBtn">
+        <span id="micIcon">🎙️</span>
+        <span id="micText">Speak / Bolo</span>
+      </button>
+      <div style="flex-basis: 100%;"></div>
+      <div class="status" id="status"></div>
+      <div class="tip">
+        Tip: Bolo jese “Novacore AI agaya?”, “mujhe joke sunao”, “aaj kya karun?” etc.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const micBtn = document.getElementById('micBtn');
+    const micText = document.getElementById('micText');
+    const statusEl = document.getElementById('status');
+
+    function addMessage(text, type) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + type;
+      div.textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function speak(text) {
+      if (!('speechSynthesis' in window)) return;
+      const utter = new SpeechSynthesisUtterance(text);
+      // Roman Urdu ke liye English voice theek chalti hai
+      utter.lang = 'en-US';
+      window.speechSynthesis.speak(utter);
+    }
+
+    async function sendToServer(text) {
+      try {
+        statusEl.textContent = 'AI soch raha hai...';
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+        });
+        const data = await res.json();
+        statusEl.textContent = '';
+        return data.reply || 'Kuch ghalti ho gai, baad me try karo 🙂';
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = '';
+        return 'Server se connect nahi ho saka, please baad me try karo.';
+      }
+    }
+
+    // ---- Speech Recognition Setup ----
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      // Roman Urdu mostly English alphabets se hoti hai
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        micBtn.classList.add('recording');
+        micText.textContent = 'Sun raha hoon...';
+        statusEl.textContent = 'Bolna shuru karein...';
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Recognition error', event);
+        micBtn.classList.remove('recording');
+        micText.textContent = 'Speak / Bolo';
+        statusEl.textContent = 'Mic error: page ko refresh karke dobara try karein.';
+      };
+
+      recognition.onend = () => {
+        micBtn.classList.remove('recording');
+        micText.textContent = 'Speak / Bolo';
+        if (!statusEl.textContent.startsWith('AI soch')) {
+          statusEl.textContent = '';
+        }
+      };
+
+      recognition.onresult = async (event) => {
+        const text = event.results[0][0].transcript;
+        addMessage(text, 'user');
+
+        const reply = await sendToServer(text);
+        addMessage(reply, 'ai');
+        speak(reply);
+      };
+
+      micBtn.onclick = () => {
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+        }
+        recognition.start();
+      };
+    } else {
+      micBtn.disabled = true;
+      micText.textContent = 'Mic not supported';
+      statusEl.textContent = 'Browser Speech Recognition support nahi karta.';
+    }
+
+    // Pehla welcome message
+    addMessage(
+      'Assalam o alaikum! Mein Novacore AI hoon. Aap roman Urdu mein mujh se baat kar sakte hain. ' +
+      'Bolo, “Novacore AI agaya?” ya koi bhi sawal puch lo 🙂',
+      'ai'
+    );
+  </script>
+</body>
+</html>
